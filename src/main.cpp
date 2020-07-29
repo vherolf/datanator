@@ -1,58 +1,21 @@
 /*
 
-This is a arduino sketch for a esp32 to build a remote control that can 
-send and receive mqtt messages.
-The ESp32 connects to your wireless network and connects to your mqtt server. 
-
-Functions:
- - connect to your wifi
- - connect to yout mqtt server
- - can publish mqtt messages 
- - can subscribe to mqtt topics
- - on a triggered GPIO sends a mqtt message (optional - set GPIOREMOTE)
- - sets a GPIO if a subscribed mqtt message arrived (optional - set GPIOREMOTE)
- - use a Adafruit MPR121 for touch input to a send mqtt message (optional - set MPR121)
- - OTA (Over the air) updates (optional - set OTA)
-
-Tested with nodeMCU, Adafruit Feather ESP32 and Heltec Wireless Stick
+DATANATOR
 
 */
 ;
-
-
 // Here you define your options, CLIENTID and which board you have
 // NEVER flash 2 boards with same CLIENTID or you run into mqtt reconnect hell
-namespace {
 
-/*
-// name: xylophon
-// board: Heltec wireless stick
-// mac: 
-const char* CLIENTID = "xylophon";
-#define MPR121 1
-#define GPIOREMOTE 0
-#define OTA 1
-*/
 
-// name: greenbox
+// name: datanator
 // board: Heltec wireless stick
-// mac: 6bbf713c
-const char* CLIENTID = "greenbox";
+// mac:
+const char* CLIENTID = "datanator";
 #define MPR121 1
 #define GPIOREMOTE 0
 #define OTA 1
 
-
-/*
-// name: rack
-// board: Adafruit feather 32
-// mac: 
-const char* CLIENTID = "rack";
-#define MPR121 0
-#define GPIOREMOTE 1
-#define OTA 1
-*/
-} 
 
 #if MPR121 == 1
   #include "Adafruit_MPR121.h"
@@ -61,17 +24,6 @@ const char* CLIENTID = "rack";
 #if GPIOREMOTE == 1
   // Define if you use a switch to trigger a mqtt message
   // change also in setup and loop
-  
-  // for ESP32 Feather
-  /*
-  const int PushButtonRECORD = 13;
-  const int PushButtonSTOP = 14;
-  const int PushButtonREWIND = 15;
-  const int PushButtonPLAY = 27;
-  const int PushButtonFORWARD = 32;
-  const int PushButtonEJECT = 33;
-  */
-  // for Heltec Wireless stick
   /*
   const int PushButtonRECORD = 13;
   const int PushButtonSTOP = 36;
@@ -79,7 +31,7 @@ const char* CLIENTID = "rack";
   const int PushButtonPLAY = 38;
   const int PushButtonFORWARD = 39;
   const int PushButtonEJECT = 23;
-  */
+*/
 #endif
 
 
