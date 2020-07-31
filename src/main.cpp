@@ -7,12 +7,12 @@ DATANATOR
 // Here you define your options, CLIENTID and which board you have
 // NEVER flash 2 boards with same CLIENTID or you run into mqtt reconnect hell
 
-
 // name: datanator
 // board: Heltec wireless stick
 // mac:
 const char* CLIENTID = "datanator";
 #define MPR121 1
+#define ONEWIRE 1
 #define GPIOREMOTE 0
 #define OTA 1
 
@@ -20,6 +20,34 @@ const char* CLIENTID = "datanator";
 #if MPR121 == 1
   #include "Adafruit_MPR121.h"
 #endif
+
+#if ONEWIRE == 1
+  #include <OneWire.h>
+  #include <DallasTemperature.h>
+  // Data wire is plugged into port 2 on the Arduino
+  #define ONE_WIRE_BUS 13
+  #define TEMPERATURE_PRECISION 11
+
+  // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+  OneWire oneWire(ONE_WIRE_BUS);
+
+  // Pass our oneWire reference to Dallas Temperature.
+  DallasTemperature sensors(&oneWire);
+
+  // arrays to hold device addresses
+  DeviceAddress insideThermometer, outsideThermometer;
+
+// Assign address manually. The addresses below will beed to be changed
+// to valid device addresses on your bus. Device address can be retrieved
+// by using either oneWire.search(deviceAddress) or individually via
+// sensors.getAddress(deviceAddress, index)
+// DeviceAddress insideThermometer = { 0x28, 0x1D, 0x39, 0x31, 0x2, 0x0, 0x0, 0xF0 };
+// DeviceAddress outsideThermometer   = { 0x28, 0x3F, 0x1C, 0x31, 0x2, 0x0, 0x0, 0x2 };
+int period = 3000;
+unsigned long time_now = 0;
+
+#endif
+
 
 #if GPIOREMOTE == 1
   // Define if you use a switch to trigger a mqtt message
@@ -66,6 +94,10 @@ unsigned long check_wifi = 30000;
 WiFiClient espClient;
 PubSubClient client(espClient);
 int count = 0;
+#define MQTT_MSG_BUFFER_SIZE	(50)
+char mqttmsg[MQTT_MSG_BUFFER_SIZE];
+#define TEMP_BUFFER_SIZE	(50)
+char tempC[10];
 
 #ifndef _BV
    #define _BV(bit) (1 << (bit)) 
@@ -112,6 +144,7 @@ void callback(char* intopic, byte* payload, unsigned int length) {
 
 }
 
+
 long lastReconnectAttempt = 0;
 
 boolean reconnect() {
@@ -121,13 +154,58 @@ boolean reconnect() {
     String mqttStatus = "client " + String(CLIENTID) + " reconnected";
     client.publish("/status",(char*) mqttStatus.c_str() );
     // subscribe to all channels
-    client.subscribe("#");
+    //client.subscribe("#");
     // or specific channels
     //client.subscribe("wohnung/scene");
     //client.subscribe("status");
   }
   return client.connected();
 }
+
+// function to print a device address
+void printAddress(DeviceAddress deviceAddress)
+{
+  for (uint8_t i = 0; i < 8; i++)
+  {
+    // zero pad the address if necessary
+    if (deviceAddress[i] < 16) Serial.print("0");
+    Serial.print(deviceAddress[i], HEX);
+  }
+}
+
+// function to print the temperature for a device
+void printTemperature(DeviceAddress deviceAddress)
+{
+  float tempC = sensors.getTempC(deviceAddress);
+  if(tempC == DEVICE_DISCONNECTED_C) 
+  {
+    Serial.println("Error: Could not read temperature data");
+    return;
+  }
+  Serial.print("Temp C: ");
+  Serial.print(tempC);
+  Serial.print(" Temp F: ");
+  Serial.print(DallasTemperature::toFahrenheit(tempC));
+}
+
+// function to print a device's resolution
+void printResolution(DeviceAddress deviceAddress)
+{
+  Serial.print("Resolution: ");
+  Serial.print(sensors.getResolution(deviceAddress));
+  Serial.println();
+}
+
+// main function to print information about a device
+void printData(DeviceAddress deviceAddress)
+{
+  Serial.print("Device Address: ");
+  printAddress(deviceAddress);
+  Serial.print(" ");
+  printTemperature(deviceAddress);
+  Serial.println();
+}
+
 
 void setup()
 {
@@ -136,6 +214,68 @@ void setup()
   Serial.println(CHIPID);
 
 
+  Serial.println("Dallas Temperature IC Control Library Demo");
+
+  // Start up the library
+  sensors.begin();
+
+  // locate devices on the bus
+  Serial.print("Locating devices...");
+  Serial.print("Found ");
+  Serial.print(sensors.getDeviceCount(), DEC);
+  Serial.println(" devices.");
+
+  // report parasite power requirements
+  Serial.print("Parasite power is: ");
+  if (sensors.isParasitePowerMode()) Serial.println("ON");
+  else Serial.println("OFF");
+
+  // Search for devices on the bus and assign based on an index. Ideally,
+  // you would do this to initially discover addresses on the bus and then
+  // use those addresses and manually assign them (see above) once you know
+  // the devices on your bus (and assuming they don't change).
+  //
+  // method 1: by index
+  if (!sensors.getAddress(insideThermometer, 0)) Serial.println("Unable to find address for Device 0");
+  if (!sensors.getAddress(outsideThermometer, 1)) Serial.println("Unable to find address for Device 1");
+
+  // method 2: search()
+  // search() looks for the next device. Returns 1 if a new address has been
+  // returned. A zero might mean that the bus is shorted, there are no devices,
+  // or you have already retrieved all of them. It might be a good idea to
+  // check the CRC to make sure you didn't get garbage. The order is
+  // deterministic. You will always get the same devices in the same order
+  //
+  // Must be called before search()
+  //oneWire.reset_search();
+  // assigns the first address found to insideThermometer
+  //if (!oneWire.search(insideThermometer)) Serial.println("Unable to find address for insideThermometer");
+  // assigns the seconds address found to outsideThermometer
+  //if (!oneWire.search(outsideThermometer)) Serial.println("Unable to find address for outsideThermometer");
+
+  // show the addresses we found on the bus
+  Serial.print("Device 0 Address: ");
+  printAddress(insideThermometer);
+  Serial.println();
+
+  Serial.print("Device 1 Address: ");
+  printAddress(outsideThermometer);
+  Serial.println();
+
+  // set the resolution to 9 bit per device
+  sensors.setResolution(insideThermometer, TEMPERATURE_PRECISION);
+  sensors.setResolution(outsideThermometer, TEMPERATURE_PRECISION);
+
+  Serial.print("Device 0 Resolution: ");
+  Serial.print(sensors.getResolution(insideThermometer), DEC);
+  Serial.println();
+
+  Serial.print("Device 1 Resolution: ");
+  Serial.print(sensors.getResolution(outsideThermometer), DEC);
+  Serial.println();
+
+
+ 
 #if GPIOREMOTE == 1
   //pinMode(PushButtonHOF, INPUT);
   //pinMode(PushButtonHOLZ, INPUT);
@@ -238,13 +378,17 @@ void setup()
   Serial.println("YEAH OTA is on");
 #endif
 
+
+
 }
 
 
 void loop()
 {
+
   static unsigned long last_pushbutton_time = 0;
-  
+ 
+
   // check MQTT connection
   if (!client.connected()) {
     long now = millis();
@@ -334,6 +478,7 @@ void loop()
         client.publish("remote/scene", "schlafenszeit");
       }
       if (i == 5) {
+         
         client.publish("remote/scene", "schlafenszeit");
       }
       if (i == 6) {
@@ -349,7 +494,10 @@ void loop()
         client.publish("remote/scene", "chill");
       }
       if (i == 10) {
-        client.publish("remote/scene", "konzentration");
+        for (int i=0; i<=1000;i++) {
+          snprintf (mqttmsg, MQTT_MSG_BUFFER_SIZE, "hello world #%ld", random(i) );
+          client.publish("remote/10", mqttmsg );
+        }
       }
       if (i == 11) {
         client.publish("remote/scene", "konzentration");
@@ -361,9 +509,20 @@ void loop()
       Serial.print(i); Serial.println(" released");
     }
   }
-
   // reset our state
   lasttouched = currtouched;
+#endif
+
+#if ONEWIRE == 1
+  if(millis() >= time_now + period) {
+    time_now += period;
+    sensors.requestTemperatures(); 
+    float temperatureC = sensors.getTempCByIndex(0);
+    Serial.print(temperatureC);
+    Serial.println("ºC");
+    snprintf (tempC, sizeof(tempC), "%.2f", temperatureC );
+    client.publish("remote/temp", tempC);
+  }
 #endif
 
 #if OTA == 1
